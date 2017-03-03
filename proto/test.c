@@ -6,7 +6,7 @@
 #define WINDOW_SIZE 1024
 #define OVERLAP_RATIO 1
 #define LOCAL_ENERGY_WINDOW_SIZE 43
-
+#define SENSITIVITY 130.0
 typedef struct slicer_energy_history{
   int   size;
   float *energies;
@@ -20,7 +20,12 @@ int main(void)
 {
   PCM pcm;
   int n, i;
+  int   step = WINDOW_SIZE / OVERLAP_RATIO;
+  int location;
+  int locaton_size = 0;
+  int flag = 0;
   float local = 0;
+  float c = SENSITIVITY / 100.0;
   read_wave(&pcm, "01.wav"); /* WAVEファイルからステレオの音データを入力する */
   t_energies energies; // = {NULL, 0};
 
@@ -42,9 +47,22 @@ int main(void)
     //printf("%d : %f\n", i, energies.energies[i]);
     local = calc_local_energy(i, energies);
 
+    if(energies.energies[i] > c * local){
+      location = i * step;
+      if(flag != 1){
+          printf("localtion : %d\n", location);
+          locaton_size++;
+          flag = 1;
+      }
+
+    }else{
+      flag = 0;
+    }
     //printf("energy index : %d > %f\n", i, local);
   }
-
+  printf("%d\n", energies.size);
+  printf("%d\n", locaton_size);
+  printf("%d\n", pcm.length / 2);
   free(pcm.buffer); /* メモリの解放 */
   free(energies.energies);
   return 0;
@@ -55,11 +73,14 @@ float calc_local_energy(int energy_history_index, t_energies energies){
   int from = 0;
   int to   = LOCAL_ENERGY_WINDOW_SIZE;
   int i = 0;
+  int real_local_energy_window_size = 0;
   float sum = 0.0;
+
 
   if(energy_history_index  == 0){
       from = 0;
       to = LOCAL_ENERGY_WINDOW_SIZE;
+
   } else if(energy_history_index < LOCAL_ENERGY_WINDOW_SIZE){
       from = energy_history_index;
       to   = energy_history_index + LOCAL_ENERGY_WINDOW_SIZE;
@@ -67,23 +88,30 @@ float calc_local_energy(int energy_history_index, t_energies energies){
   } else if(energy_history_index + LOCAL_ENERGY_WINDOW_SIZE < energies.size) {
       from = energy_history_index;
       to = energy_history_index + LOCAL_ENERGY_WINDOW_SIZE;
-  } else {
-      from = energies.size - LOCAL_ENERGY_WINDOW_SIZE;
-      to = energies.size;
+  }else {
+      from = energy_history_index; //energies.size - LOCAL_ENERGY_WINDOW_SIZE;
+
+      if(energy_history_index + LOCAL_ENERGY_WINDOW_SIZE < energies.size){
+        to = energy_history_index + LOCAL_ENERGY_WINDOW_SIZE; //energies.size;
+      }else{
+        to = energies.size;
+      }
+
   }
 
   for(i = from; i < to; i++){
     sum = sum + pow(energies.energies[i], 1.0);
+    real_local_energy_window_size++;
   }
-  printf("energy index : %d > from :%d > to :%d > sum:%f\n", energy_history_index, from, to, sum / LOCAL_ENERGY_WINDOW_SIZE);
+//  printf("energy index : %d > from :%d > to :%d > sum:%f\n", energy_history_index, from, to, sum / real_local_energy_window_size);
 
-  return sum / LOCAL_ENERGY_WINDOW_SIZE;
+  return sum / real_local_energy_window_size;
 }
 
 
 void calc_energy_history(t_energies *energies, PCM *pcm, int window_size){
   int   step = window_size / OVERLAP_RATIO;
-  int   energy_frame_num = pcm->length / step;
+  int   energy_frame_num = pcm->length / 2 / step;
   int   window_index = 0;
   int   i, j; //counter
   //float  *energy;
@@ -93,7 +121,7 @@ void calc_energy_history(t_energies *energies, PCM *pcm, int window_size){
   energies->energies = calloc(energy_frame_num, sizeof(float));
   //printf("-----------------\n");
 
-  for(i = 0; i + window_size < pcm->length; i += step){
+  for(i = 0; i + window_size < pcm->length / 2; i += step){
     sum = 0;
     printf("-----------------\n");
     for(j = 0; j < window_size; j += 2){
